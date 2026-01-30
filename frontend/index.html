@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Document Chat</title>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Google Fonts: Inter & Outfit -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Main Styles -->
+    <link rel="stylesheet" href="css/main.css">
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const API_URL = "http://localhost:8000";
+
+        // --- API HELPERS ---
+        const uploadDocument = async (file) => {
+            const formData = new FormData();
+            formData.append('file', file);
+            const res = await fetch(`${API_URL}/upload`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || "Upload failed");
+            return { id: data.document_id, name: file.name };
+        };
+
+        const queryDocument = async (documentId, question) => {
+            const res = await fetch(`${API_URL}/query`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ document_id: documentId, question })
+            });
+            const data = await res.json();
+            return {
+                ok: res.ok,
+                answer: data.answer,
+                detail: data.detail,
+                sources: data.sources
+            };
+        };
+
+        // --- ICONS ---
+        const IconUpload = () => <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>;
+        const IconFile = () => <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
+        const IconSend = () => <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>;
+        const IconSearch = () => <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>;
+        const IconSparkles = () => <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 3.214L13 21l-2.286-6.857L5 12l5.714-3.214z" /></svg>;
+
+        // --- COMPONENTS ---
+
+        function DocumentPreview({ url }) {
+            return (
+                <div className="preview-pane">
+                    <iframe src={url} title="Document Preview" width="100%" height="100%" style={{ border: 'none' }}></iframe>
+                </div>
+            );
+        }
+
+        function Sidebar({ documents, activeId, onSelect, onUpload }) {
+            const fileInput = useRef(null);
+
+            return (
+                <aside className="sidebar">
+                    <div className="brand">
+                        <div className="brand-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+                        </div>
+                        <span>AI Document Chat</span>
+                    </div>
+
+                    <div className="menu-section">
+                        <div className="nav-item" onClick={() => fileInput.current?.click()}>
+                            <div className="nav-icon"><IconUpload /></div>
+                            <span>New Upload</span>
+                        </div>
+                        <input
+                            type="file"
+                            hidden
+                            ref={fileInput}
+                            onChange={(e) => e.target.files[0] && onUpload(e.target.files[0])}
+                            accept=".pdf,.txt"
+                        />
+                    </div>
+
+                    <div className="menu-section">
+                        <div className="section-title">Your Files</div>
+                        {documents.length === 0 && <div style={{ padding: '0 0.75rem', fontSize: '0.85rem', color: '#9CA3AF' }}>No files yet</div>}
+                        {documents.map(doc => (
+                            <div
+                                key={doc.id}
+                                className={`nav-item ${doc.id === activeId ? 'active' : ''}`}
+                                onClick={() => onSelect(doc.id)}
+                            >
+                                <div className="nav-icon"><IconFile /></div>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.name}</span>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="pro-card">
+                        <h4>Pro Features</h4>
+                        <p>Unlock advanced models and unlimited history.</p>
+                    </div>
+                </aside>
+            );
+        }
+
+        function WelcomeScreen({ onSampleClick }) {
+            const suggestions = [
+                { icon: "📄", title: "Summarize Document", desc: "Get a quick overview of the key points.", prompt: "Summarize this document in 3 paragraphs." },
+                { icon: "🔍", title: "Specific Details", desc: "Find dates, names, or specific clauses.", prompt: "List all specific dates and entities mentioned in the document." },
+                { icon: "✨", title: "Creative Writing", desc: "Generate content based on the file.", prompt: "Using the document's content as inspiration, write a creative short story or blog post related to its themes." },
+            ];
+
+            return (
+                <div className="welcome-container">
+                    <h1 className="greeting">
+                        Hello, <span className="greeting-gradient">User</span>
+                    </h1>
+                    <h2 className="subtitle">Ready to chat with your docs?</h2>
+
+                    <div className="suggestions-grid">
+                        {suggestions.map((s, i) => (
+                            <div key={i} className="suggestion-card" onClick={() => onSampleClick(s.prompt)}>
+                                <div className="card-icon">{s.icon}</div>
+                                <div className="card-title">{s.title}</div>
+                                <div className="card-desc">{s.desc}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        function MessageList({ messages, isLoading }) {
+            const endRef = useRef(null);
+            useEffect(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), [messages, isLoading]);
+
+            return (
+                <div className="content-width">
+                    {messages.map((msg, i) => (
+                        <div key={i} className={`message-row ${msg.role === 'user' ? 'user-message' : ''}`}>
+                            {msg.role === 'assistant' && (
+                                <div className="message-avatar">
+                                    <IconSparkles />
+                                </div>
+                            )}
+                            <div className="message-content">
+                                <div style={{ whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+                                {msg.sources && msg.sources.length > 0 && (
+                                    <div className="sources-pill" title={msg.sources.join('\n')}>
+                                        📚 {msg.sources.length} Sources
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                    {isLoading && (
+                        <div className="message-row">
+                            <div className="message-avatar"><IconSparkles /></div>
+                            <div className="message-content">
+                                <span style={{ color: '#9CA3AF' }}>Thinking...</span>
+                            </div>
+                        </div>
+                    )}
+                    <div ref={endRef} />
+                </div>
+            );
+        }
+
+        function InputBar({ value, onChange, onSend, disabled }) {
+            return (
+                <div className="input-floating-container">
+                    <div className="input-bar">
+                        <div className="action-btn">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                        </div>
+                        <input
+                            className="input-field"
+                            placeholder="Ask something..."
+                            value={value}
+                            onChange={onChange}
+                            onKeyDown={e => e.key === 'Enter' && onSend()}
+                            disabled={disabled}
+                        />
+                        <button
+                            className="action-btn send-btn-primary"
+                            onClick={onSend}
+                            disabled={!value.trim() || disabled}
+                        >
+                            <IconSend />
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- MAIN APP ---
+        function App() {
+            const [documents, setDocuments] = useState([]);
+            const [activeDocId, setActiveDocId] = useState(null);
+            const [chats, setChats] = useState({});
+            const [isLoading, setIsLoading] = useState(false);
+            const [inputValue, setInputValue] = useState("");
+            const [showPreview, setShowPreview] = useState(true); // Default to show if active
+
+            const onUploadFile = async (file) => {
+                try {
+                    const newDoc = await uploadDocument(file);
+                    setDocuments(prev => [...prev, newDoc]);
+                    setChats(prev => ({ ...prev, [newDoc.id]: [] }));
+                    setActiveDocId(newDoc.id);
+                } catch (e) {
+                    alert("Upload error: " + e.message);
+                }
+            };
+
+            const sendMessage = async (text) => {
+                if (!text.trim()) return;
+                if (!activeDocId) {
+                    alert("Please upload or select a document first.");
+                    return;
+                }
+
+                setInputValue("");
+                const userMsg = { role: 'user', text };
+                setChats(prev => ({ ...prev, [activeDocId]: [...(prev[activeDocId] || []), userMsg] }));
+                setIsLoading(true);
+
+                try {
+                    const result = await queryDocument(activeDocId, text);
+                    const aiMsg = {
+                        role: 'assistant',
+                        text: result.ok ? result.answer : "Error: " + result.detail,
+                        sources: result.sources
+                    };
+                    setChats(prev => ({ ...prev, [activeDocId]: [...(prev[activeDocId] || []), aiMsg] }));
+                } catch (e) {
+                    setChats(prev => ({ ...prev, [activeDocId]: [...(prev[activeDocId] || []), { role: 'assistant', text: "Network error" }] }));
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const activeMessages = activeDocId ? (chats[activeDocId] || []) : [];
+            const hasMessages = activeMessages.length > 0;
+
+            return (
+                <div className="app-container">
+                    <Sidebar
+                        documents={documents}
+                        activeId={activeDocId}
+                        onSelect={setActiveDocId}
+                        onUpload={onUploadFile}
+                    />
+
+                    <main className="main-content">
+                        <div className="top-nav">
+                            <div className="model-pill">
+                                <span>✨</span> <span>Gemini Flash</span>
+                            </div>
+                            {activeDocId && (
+                                <button className="model-pill" style={{ border: 'none', cursor: 'pointer' }} onClick={() => setShowPreview(!showPreview)}>
+                                    {showPreview ? 'Hide PDF' : 'Show PDF'}
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="main-split-view" style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+                            <div className="chat-section" style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', height: '100%' }}>
+                                <div className="chat-scroll-area">
+                                    {!activeDocId || (activeDocId && !hasMessages) ? (
+                                        <WelcomeScreen onSampleClick={(prompt) => sendMessage(prompt)} />
+                                    ) : (
+                                        <MessageList messages={activeMessages} isLoading={isLoading} />
+                                    )}
+                                </div>
+                                <InputBar
+                                    value={inputValue}
+                                    onChange={e => setInputValue(e.target.value)}
+                                    onSend={() => sendMessage(inputValue)}
+                                    disabled={isLoading}
+                                />
+                            </div>
+
+                            {activeDocId && showPreview && (
+                                <div className="preview-section" style={{ width: '600px', borderLeft: '1px solid #e5e7eb', background: '#f9fafb' }}>
+                                    <iframe
+                                        src={`${API_URL}/documents/${activeDocId}/content`}
+                                        style={{ width: '100%', height: '100%', border: 'none' }}
+                                        title="PDF Preview"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
