@@ -88,12 +88,3 @@ Open your web browser and navigate to:
 2.  **Select**: Click on the uploaded file in the "Your Files" list.
 3.  **View**: Click "Show PDF" to open the document viewer.
 4.  **Chat**: Type your question in the chat bar or use one of the suggested prompts to start analyzing!
-
-## 🔮 Future Improvements
--   [ ] Support for multiple document selection.
--   [ ] Persistent database storage (SQLite/PostgreSQL).
--   [ ] User authentication.
--   [ ] Dark/Light mode toggle.
-
----
-*Built with ❤️ by [Your Name]*
